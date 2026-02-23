@@ -49,7 +49,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: currentText,
-          sessionId: sessionIdRef.current // ใช้ sessionId ที่สร้างไว้เพื่อรักษาบริบทแชท
+          sessionId: sessionIdRef.current
         }),
       });
 
@@ -59,41 +59,16 @@ export default function Home() {
         throw new Error(data.error);
       }
 
-      // 2. ป้องกัน AI แถม Markdown (```json) มาให้ทำการคลีน String ก่อน Parse
-      let aiData = data;
+      // route.ts parse JSON + strip markdown ให้แล้ว ได้ object พร้อมใช้เลย
+      const aiText = data.ai_reply || data.text || "ระบบกำลังประมวลผล โปรดลองใหม่อีกครั้งค่ะ";
 
-      // ฟังก์ชันสำหรับลบคำว่า ```json และ ``` ออกจากข้อความ
-      const cleanJsonString = (str: string) => {
-        return str.replace(/```json/gi, '').replace(/```/g, '').trim();
-      };
-
-      if (typeof data === 'string') {
-        try {
-          aiData = JSON.parse(cleanJsonString(data));
-        } catch (e) {
-          console.error("Parse error", e);
-        }
-      } else if (data.output && typeof data.output === 'string') {
-        // กรณี n8n ห่อ response ไว้ในตัวแปร output
-        try {
-          aiData = JSON.parse(cleanJsonString(data.output));
-        } catch (e) {
-          console.error("Parse error", e);
-        }
-      }
-
-      // 3. ดึงข้อมูลจากโครงสร้าง JSON ที่คุณตั้งค่าไว้ใน System Prompt ของ n8n
-      const aiText = aiData.ai_reply || "ระบบกำลังประมวลผล โปรดลองใหม่อีกครั้งค่ะ";
-
-      // 4. อัปเดต State แชท โดยส่ง stores, promotions และ quick_replies ให้ UI นำไปใช้
       setMessages((prev) => [
         ...prev,
         {
           role: "ai",
           text: aiText,
-          stores: aiData.stores || [],
-          promotions: aiData.promotions || [],
-          quick_replies: aiData.quick_replies || [],
+          stores: data.stores || [],
+          quick_replies: data.quick_replies || [],
         },
       ]);
 
@@ -160,9 +135,9 @@ export default function Home() {
                 <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-purple-500">Smart Directory</span>
               </div>
               <h1 className="text-4xl font-extrabold tracking-tight leading-[1.1]">
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-pink-500 to-rose-400">CENTRAL</span>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-600 via-pink-500 to-rose-400">MAYA</span>
                 <br />
-                <span className="text-slate-700">GRAND</span>
+                <span className="text-slate-700">Chiangmai</span>
               </h1>
             </div>
 
@@ -170,7 +145,7 @@ export default function Home() {
             {/* Mall Image with overlay */}
             <div className="flex-1 relative rounded-2xl overflow-hidden border border-white/80 shadow-lg group/img animate-slide-up animation-delay-600 min-h-[180px]">
               <img
-                src="https://images.unsplash.com/photo-1519501025264-65ba15a82390?q=80&w=800&auto=format&fit=crop"
+                src="/maya.jpg"
                 className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-700"
                 alt="Mall View"
               />
@@ -217,13 +192,13 @@ export default function Home() {
                 <div className="absolute -bottom-0.5 -left-1 w-2 h-2 bg-sky-300 rounded-full shadow-sm shadow-sky-200 animate-float-reverse" style={{ animationDuration: "4s" }}></div>
               </div>
               <div>
-                <h2 className="text-lg font-extrabold text-slate-700 tracking-tight">Mall Assistant</h2>
+                <h2 className="text-lg font-extrabold text-slate-700 tracking-tight">MAYA Chiangmai</h2>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="relative flex h-2 w-2">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                   </span>
-                  <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">Online • พร้อมช่วยเหลือ</p>
+                  <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">Online • MALL ASSISTANT</p>
                 </div>
               </div>
             </div>
@@ -259,15 +234,15 @@ export default function Home() {
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-700 leading-tight">
                     สวัสดีค่ะ! <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-500">ให้ช่วยอะไรดี?</span>
                   </h1>
-                  <p className="text-slate-400 font-medium text-sm max-w-xs mx-auto leading-relaxed">สอบถามพิกัดร้านค้า โปรโมชัน แผนที่ชั้น หรือข้อมูลอื่นๆ ได้เลยค่ะ</p>
+                  <p className="text-slate-400 font-medium text-sm max-w-xs mx-auto leading-relaxed">สอบถามพิกัดร้านค้า แผนผังชั้น หรือข้อมูลอื่นๆ ได้เลยค่ะ</p>
                 </div>
 
                 {/* Quick Action Buttons */}
                 <div className="flex flex-wrap justify-center gap-2.5 animate-slide-up animation-delay-400">
                   {[
-                    { label: "หาร้านฮาจิบัง", emoji: "🍜", color: "pink" },
+                    { label: "หาร้านอาหาร", emoji: "🍜", color: "pink" },
                     { label: "ห้องน้ำอยู่ไหน", emoji: "🚻", color: "sky" },
-                    { label: "โปรโมชันวันนี้", emoji: "✨", color: "purple" },
+                    { label: "ผังทุกชั้น", emoji: "🗺️", color: "purple" },
                   ].map((item, i) => (
                     <button
                       key={i}
@@ -288,9 +263,6 @@ export default function Home() {
                 <div className="flex gap-3 animate-slide-up animation-delay-600">
                   <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 bg-white/60 border border-slate-100 rounded-full px-3 py-1.5">
                     <span className="text-purple-400">🏪</span> 200+ ร้านค้า
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 bg-white/60 border border-slate-100 rounded-full px-3 py-1.5">
-                    <span className="text-pink-400">🎁</span> 50+ โปรโมชัน
                   </div>
                 </div>
               </div>

@@ -15,8 +15,8 @@ const notoSansThai = Noto_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "Central Grand — Smart Mall Directory",
-  description: "ผู้ช่วยอัจฉริยะสำหรับค้นหาร้านค้า โปรโมชัน และข้อมูลในห้างสรรพสินค้า",
+  title: "MAYA Chiangmai — Smart Mall Directory",
+  description: "ผู้ช่วยอัจฉริยะสำหรับค้นหาร้านค้าและข้อมูลใน MAYA Chiangmai",
 };
 
 export default function RootLayout({
@@ -25,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="th">
       <body
         className={`${inter.variable} ${notoSansThai.variable} antialiased`}
       >

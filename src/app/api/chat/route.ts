@@ -11,8 +11,14 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // นำ URL Webhook ของ n8n มาใส่ที่นี่ (เปลี่ยน localhost เป็น URL จริงหาก deploy แล้ว)
-        const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "http://localhost:5678/webhook/mall-chat-web";
+        // อ่าน URL จาก .env.local เท่านั้น
+        const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL;
+        if (!N8N_WEBHOOK_URL) {
+            return NextResponse.json(
+                { error: "กรุณาตั้งค่า N8N_WEBHOOK_URL ใน .env.local" },
+                { status: 500 }
+            );
+        }
 
         // ยิง Request ไปหา n8n Webhook
         const n8nResponse = await fetch(N8N_WEBHOOK_URL, {
@@ -22,8 +28,8 @@ export async function POST(req: NextRequest) {
             },
             body: JSON.stringify({
                 message: message,
-                sessionId: sessionId || "default-session", // ส่ง sessionId ไปเพื่อให้ n8n จำบริบทได้
-                current_date: new Date().toISOString() // ส่งวันที่ปัจจุบันไปตามที่ System Prompt ของ n8n ต้องการ
+                sessionId: sessionId || "default-session",
+                current_date: new Date().toISOString()
             }),
         });
 
