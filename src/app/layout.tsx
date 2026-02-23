@@ -15,8 +15,11 @@ const notoSansThai = Noto_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "MAYA Chiangmai—Smart Mall Directory",
+  title: "MAYA Chiangmai-Smart Mall Directory",
   description: "ผู้ช่วยอัจฉริยะสำหรับค้นหาร้านค้าและข้อมูลใน MAYA Chiangmai",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({
