@@ -59,13 +59,27 @@ export default function Home() {
         throw new Error(data.error);
       }
 
-      // 2. n8n อาจะส่งมาเป็น String (ผ่าน Respond to Webhook) จึงต้องเช็คและแปลงเป็น JSON Object
+      // 2. ป้องกัน AI แถม Markdown (```json) มาให้ทำการคลีน String ก่อน Parse
       let aiData = data;
+
+      // ฟังก์ชันสำหรับลบคำว่า ```json และ ``` ออกจากข้อความ
+      const cleanJsonString = (str: string) => {
+        return str.replace(/```json/gi, '').replace(/```/g, '').trim();
+      };
+
       if (typeof data === 'string') {
-        try { aiData = JSON.parse(data); } catch (e) { console.error("Parse error", e); }
+        try {
+          aiData = JSON.parse(cleanJsonString(data));
+        } catch (e) {
+          console.error("Parse error", e);
+        }
       } else if (data.output && typeof data.output === 'string') {
         // กรณี n8n ห่อ response ไว้ในตัวแปร output
-        try { aiData = JSON.parse(data.output); } catch (e) { console.error("Parse error", e); }
+        try {
+          aiData = JSON.parse(cleanJsonString(data.output));
+        } catch (e) {
+          console.error("Parse error", e);
+        }
       }
 
       // 3. ดึงข้อมูลจากโครงสร้าง JSON ที่คุณตั้งค่าไว้ใน System Prompt ของ n8n
