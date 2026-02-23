@@ -8,6 +8,7 @@ export default function Home() {
   const [isTyping, setIsTyping] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sessionIdRef = useRef(`web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -31,27 +32,69 @@ export default function Home() {
     recognition.start();
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputText.trim()) return;
-    const userMsg = { role: "user", text: inputText, images: null };
+
+    const currentText = inputText;
+    const userMsg = { role: "user", text: currentText };
+
     setMessages((prev) => [...prev, userMsg]);
     setInputText("");
     setIsTyping(true);
 
-    setTimeout(() => {
-      setIsTyping(false);
+    try {
+      // 1. เรียกใช้งาน API route ของเรา
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: currentText,
+          sessionId: sessionIdRef.current // ใช้ sessionId ที่สร้างไว้เพื่อรักษาบริบทแชท
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // 2. n8n อาจะส่งมาเป็น String (ผ่าน Respond to Webhook) จึงต้องเช็คและแปลงเป็น JSON Object
+      let aiData = data;
+      if (typeof data === 'string') {
+        try { aiData = JSON.parse(data); } catch (e) { console.error("Parse error", e); }
+      } else if (data.output && typeof data.output === 'string') {
+        // กรณี n8n ห่อ response ไว้ในตัวแปร output
+        try { aiData = JSON.parse(data.output); } catch (e) { console.error("Parse error", e); }
+      }
+
+      // 3. ดึงข้อมูลจากโครงสร้าง JSON ที่คุณตั้งค่าไว้ใน System Prompt ของ n8n
+      const aiText = aiData.ai_reply || "ระบบกำลังประมวลผล โปรดลองใหม่อีกครั้งค่ะ";
+
+      // 4. อัปเดต State แชท โดยส่ง stores, promotions และ quick_replies ให้ UI นำไปใช้
       setMessages((prev) => [
         ...prev,
         {
           role: "ai",
-          text: "พบร้านฮาจิบัง ราเมน ที่ชั้น 3 โซน A ค่ะ วันนี้มีโปรโมชันพิเศษ 'Double Happiness' รับส่วนลด 20% เมื่อสั่งเมนูเซ็ตนะคะ!",
-          images: {
-            promoUrl: "https://images.unsplash.com/photo-1569058242253-12338a6a221f?q=80&w=600&auto=format&fit=crop",
-            mapUrl: "https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=600&auto=format&fit=crop"
-          },
+          text: aiText,
+          stores: aiData.stores || [],
+          promotions: aiData.promotions || [],
+          quick_replies: aiData.quick_replies || [],
         },
       ]);
-    }, 1500);
+
+    } catch (error) {
+      console.error(error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          text: "ขออภัยค่ะ เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง",
+        },
+      ]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const now = new Date();
@@ -261,26 +304,63 @@ export default function Home() {
                     {/* Timestamp */}
                     <span className="text-[10px] text-slate-400 font-medium mt-1.5 px-2">{timeStr}</span>
 
-                    {/* Image Cards */}
-                    {msg.images && (
-                      <div className="mt-3 flex flex-col gap-3 w-full max-w-[280px]">
-                        {/* Promo Image */}
-                        <div className="relative rounded-2xl overflow-hidden border border-white/80 shadow-md group/img cursor-pointer bg-white p-1 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
-                          <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5">
-                            <span className="bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[10px] px-3 py-1.5 rounded-lg font-bold shadow-sm tracking-wider">PROMO</span>
-                          </div>
-                          <img src={msg.images.promoUrl} className="w-full h-36 object-cover rounded-xl group-hover/img:scale-[1.03] transition-transform duration-500" alt="Promo" />
-                          <div className="absolute inset-1 rounded-xl bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity duration-300"></div>
-                        </div>
+                    {/* Store Cards */}
+                    {msg.stores && msg.stores.length > 0 && (
+                      <div className="mt-3 flex flex-col gap-3 w-full max-w-[320px]">
+                        {msg.stores.map((store: any, si: number) => (
+                          <div key={si} className="rounded-2xl overflow-hidden border border-purple-50/80 shadow-md bg-white/95 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
+                            {/* Store Header */}
+                            <div className="px-3.5 pt-3 pb-2 flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center shadow-sm">
+                                <span className="text-white text-sm">🏪</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-slate-700 truncate">{store.store_name || store.name}</p>
+                                <p className="text-[11px] text-slate-400 font-medium">{store.location_text || `ชั้น ${store.floor}`} {store.category ? `• ${store.category}` : ''}</p>
+                              </div>
+                            </div>
 
-                        {/* Map Image */}
-                        <div className="relative rounded-2xl overflow-hidden border border-white/80 shadow-md group/img cursor-pointer bg-white p-1 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
-                          <div className="absolute top-4 left-4 z-10 flex items-center gap-1.5">
-                            <span className="bg-gradient-to-r from-sky-500 to-blue-500 text-white text-[10px] px-3 py-1.5 rounded-lg font-bold shadow-sm tracking-wider">MAP</span>
+                            {/* Store Image */}
+                            {(store.image_url) && (
+                              <div className="px-2 pb-1">
+                                <div className="relative group/img cursor-pointer rounded-xl overflow-hidden">
+                                  <div className="absolute top-2.5 left-2.5 z-10">
+                                    <span className="bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[9px] px-2.5 py-1 rounded-lg font-bold shadow-sm tracking-wider">📸 หน้าร้าน</span>
+                                  </div>
+                                  <img src={store.image_url} className="w-full h-36 object-cover rounded-xl group-hover/img:scale-[1.03] transition-transform duration-500" alt={store.store_name || store.name} />
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Map Image */}
+                            {(store.map_url || store.map_image_url) && (
+                              <div className="px-2 pb-2">
+                                <a href={store.map_url || store.map_image_url} target="_blank" rel="noopener noreferrer" className="block relative group/img cursor-pointer rounded-xl overflow-hidden">
+                                  <div className="absolute top-2.5 left-2.5 z-10">
+                                    <span className="bg-gradient-to-r from-sky-500 to-blue-500 text-white text-[9px] px-2.5 py-1 rounded-lg font-bold shadow-sm tracking-wider">🗺️ แผนผัง</span>
+                                  </div>
+                                  <div className="w-full h-28 rounded-xl bg-gradient-to-br from-sky-50 to-blue-50 flex flex-col items-center justify-center gap-1.5 border border-sky-100 group-hover/img:bg-sky-100/50 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-sky-400">
+                                      <path fillRule="evenodd" d="M8.161 2.58a1.875 1.875 0 011.678 0l4.993 2.498c.106.052.23.052.336 0l3.869-1.935A1.875 1.875 0 0121.75 4.82v12.485c0 .71-.401 1.36-1.037 1.677l-4.875 2.437a1.875 1.875 0 01-1.676 0l-4.994-2.497a.375.375 0 00-.336 0l-3.869 1.935A1.875 1.875 0 012.25 19.18V6.695c0-.71.401-1.36 1.037-1.677l4.875-2.437zM9 6a.75.75 0 01.75.75V15a.75.75 0 01-1.5 0V6.75A.75.75 0 019 6zm6.75 3.75a.75.75 0 00-1.5 0v8.25a.75.75 0 001.5 0v-8.25z" clipRule="evenodd" />
+                                    </svg>
+                                    <span className="text-xs font-semibold text-sky-500">ดูแผนผังชั้น</span>
+                                  </div>
+                                </a>
+                              </div>
+                            )}
                           </div>
-                          <img src={msg.images.mapUrl} className="w-full h-36 object-cover rounded-xl group-hover/img:scale-[1.03] transition-transform duration-500" alt="Map" />
-                          <div className="absolute inset-1 rounded-xl bg-gradient-to-t from-black/20 via-transparent to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity duration-300"></div>
-                        </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Quick Replies */}
+                    {msg.quick_replies && msg.quick_replies.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {msg.quick_replies.map((qr: string, qi: number) => (
+                          <button key={qi} onClick={() => setInputText(qr)} className="text-[12px] px-3 py-1.5 bg-purple-50/80 text-purple-600 border border-purple-100 rounded-xl font-semibold hover:bg-purple-100 hover:border-purple-200 transition-all active:scale-95">
+                            {qr}
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
