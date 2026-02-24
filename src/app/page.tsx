@@ -10,6 +10,15 @@ export default function Home() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const sessionIdRef = useRef(`web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
+  // 1. สร้าง State สำหรับเก็บเวลา
+  const [timeStr, setTimeStr] = useState<string>("");
+
+  // 2. ดึงเวลาตอนที่หน้าเว็บโหลดเสร็จแล้ว
+  useEffect(() => {
+    const now = new Date();
+    setTimeStr(now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }));
+  }, []);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -85,9 +94,6 @@ export default function Home() {
       setIsTyping(false);
     }
   };
-
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
 
   return (
     <>
@@ -207,6 +213,7 @@ export default function Home() {
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5 text-purple-400">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
+              {/* แสดง timeStr ที่ดึงมาจาก Client แล้ว */}
               <span className="text-[11px] font-bold text-purple-500">{timeStr}</span>
             </div>
           </header>
@@ -273,7 +280,7 @@ export default function Home() {
                   {msg.role === "ai" && (
                     <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-tr from-purple-400 to-pink-400 rounded-xl flex items-center justify-center shadow-sm shadow-pink-200/50 mt-1">
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-white">
-                        <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 01-1.442 0l-.813-2.846a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813A3.75 3.75 0 007.466 7.89l.813-2.846A.75.75 0 019 4.5z" clipRule="evenodd" />
+                        <path fillRule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 010-1.442l-2.846-.813a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813A3.75 3.75 0 007.466 7.89l.813-2.846A.75.75 0 019 4.5z" clipRule="evenodd" />
                       </svg>
                     </div>
                   )}
