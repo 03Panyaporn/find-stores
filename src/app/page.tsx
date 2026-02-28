@@ -1,22 +1,70 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+
+// ====== TypeScript Interfaces ======
+interface Store {
+  store_name?: string;
+  name?: string;
+  location_text?: string;
+  floor?: string | number;
+  category?: string;
+  image_url?: string;
+  map_url?: string;
+  map_image_url?: string;
+}
+
+interface ChatMessage {
+  role: "user" | "ai";
+  text: string;
+  stores?: Store[];
+  quick_replies?: string[];
+  timestamp: string;
+}
+
+interface ChatApiResponse {
+  ai_reply?: string;
+  text?: string;
+  stores?: Store[];
+  quick_replies?: string[];
+  error?: string;
+}
+
+// ====== URL Sanitization ======
+function isSafeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
 
 export default function Home() {
   const [inputText, setInputText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const sessionIdRef = useRef(`web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
-  // 1. สร้าง State สำหรับเก็บเวลา
+  // Helper: get current time string
+  const getCurrentTime = () =>
+    new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" });
+
+  // 1. สร้าง State สำหรับเก็บเวลา (used in header)
   const [timeStr, setTimeStr] = useState<string>("");
 
   // 2. ดึงเวลาตอนที่หน้าเว็บโหลดเสร็จแล้ว
   useEffect(() => {
-    const now = new Date();
-    setTimeStr(now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }));
+    setTimeStr(getCurrentTime());
+    // อัปเดตนาฬิกาทุกนาที
+    const interval = setInterval(() => {
+      setTimeStr(getCurrentTime());
+    }, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -26,61 +74,104 @@ export default function Home() {
   }, [messages, isTyping]);
 
   const handleMicClick = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) { alert("ขออภัย เบราว์เซอร์ของคุณไม่รองรับการพิมพ์ด้วยเสียง"); return; }
-    if (isRecording) { setIsRecording(false); return; }
-    const recognition = new SpeechRecognition();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any;
+    const SpeechRecognitionClass = w.SpeechRecognition || w.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionClass) {
+      alert("ขออภัย เบราว์เซอร์ของคุณไม่รองรับการพิมพ์ด้วยเสียง");
+      return;
+    }
+
+    // ถ้ากำลังบันทึกอยู่ → หยุด recognition จริง
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsRecording(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognitionClass();
+    recognitionRef.current = recognition;
     recognition.lang = "th-TH";
     recognition.interimResults = false;
     recognition.onstart = () => setIsRecording(true);
-    recognition.onend = () => setIsRecording(false);
+    recognition.onend = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+    recognition.onerror = () => {
+      setIsRecording(false);
+      recognitionRef.current = null;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       setInputText(event.results[0][0].transcript);
       setIsRecording(false);
+      recognitionRef.current = null;
     };
     recognition.start();
   };
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+  const handleSendMessage = useCallback(async (overrideText?: string) => {
+    const textToSend = overrideText ?? inputText;
+    if (!textToSend.trim()) return;
 
-    const currentText = inputText;
-    const userMsg = { role: "user", text: currentText };
+    const userMsg: ChatMessage = {
+      role: "user",
+      text: textToSend,
+      timestamp: getCurrentTime(),
+    };
 
     setMessages((prev) => [...prev, userMsg]);
     setInputText("");
     setIsTyping(true);
 
     try {
-      // 1. เรียกใช้งาน API route ของเรา
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: currentText,
-          sessionId: sessionIdRef.current
+          message: textToSend,
+          sessionId: sessionIdRef.current,
         }),
       });
 
-      const data = await response.json();
+      // Validate response before parsing
+      if (!response.ok) {
+        throw new Error(`Server responded with status ${response.status}`);
+      }
+
+      let data: ChatApiResponse;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("ไม่สามารถอ่านข้อมูลจากเซิร์ฟเวอร์ได้");
+      }
 
       if (data.error) {
         throw new Error(data.error);
       }
 
-      // route.ts parse JSON + strip markdown ให้แล้ว ได้ object พร้อมใช้เลย
       const aiText = data.ai_reply || data.text || "ระบบกำลังประมวลผล โปรดลองใหม่อีกครั้งค่ะ";
+
+      // Sanitize store URLs
+      const sanitizedStores: Store[] = (data.stores || []).map((store) => ({
+        ...store,
+        image_url: store.image_url && isSafeUrl(store.image_url) ? store.image_url : undefined,
+        map_url: store.map_url && isSafeUrl(store.map_url) ? store.map_url : undefined,
+        map_image_url: store.map_image_url && isSafeUrl(store.map_image_url) ? store.map_image_url : undefined,
+      }));
 
       setMessages((prev) => [
         ...prev,
         {
           role: "ai",
           text: aiText,
-          stores: data.stores || [],
+          stores: sanitizedStores,
           quick_replies: data.quick_replies || [],
+          timestamp: getCurrentTime(),
         },
       ]);
-
     } catch (error) {
       console.error(error);
       setMessages((prev) => [
@@ -88,12 +179,13 @@ export default function Home() {
         {
           role: "ai",
           text: "ขออภัยค่ะ เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง",
+          timestamp: getCurrentTime(),
         },
       ]);
     } finally {
       setIsTyping(false);
     }
-  };
+  }, [inputText]);
 
   return (
     <>
@@ -244,7 +336,7 @@ export default function Home() {
                   <p className="text-slate-400 font-medium text-sm max-w-xs mx-auto leading-relaxed">สอบถามพิกัดร้านค้า แผนผังชั้น หรือข้อมูลอื่นๆ ได้เลยค่ะ</p>
                 </div>
 
-                {/* Quick Action Buttons */}
+                {/* Quick Action Buttons — now auto-send on click */}
                 <div className="flex flex-wrap justify-center gap-2.5 animate-slide-up animation-delay-400">
                   {[
                     { label: "หาร้านอาหาร", emoji: "🍜", color: "pink" },
@@ -253,7 +345,7 @@ export default function Home() {
                   ].map((item, i) => (
                     <button
                       key={i}
-                      onClick={() => setInputText(item.label)}
+                      onClick={() => handleSendMessage(item.label)}
                       className={`group/btn flex items-center gap-2 px-4 py-2.5 bg-white/80 border rounded-2xl font-semibold hover:shadow-lg transition-all active:scale-95 text-sm backdrop-blur-sm
                         ${item.color === "pink" ? "border-pink-100 text-pink-600 hover:bg-pink-50 hover:border-pink-200 hover:shadow-pink-100/50" : ""}
                         ${item.color === "sky" ? "border-sky-100 text-sky-600 hover:bg-sky-50 hover:border-sky-200 hover:shadow-sky-100/50" : ""}
@@ -294,13 +386,13 @@ export default function Home() {
                       {msg.text}
                     </div>
 
-                    {/* Timestamp */}
-                    <span className="text-[10px] text-slate-400 font-medium mt-1.5 px-2">{timeStr}</span>
+                    {/* Timestamp — per message */}
+                    <span className="text-[10px] text-slate-400 font-medium mt-1.5 px-2">{msg.timestamp}</span>
 
                     {/* Store Cards */}
                     {msg.stores && msg.stores.length > 0 && (
                       <div className="mt-3 flex flex-col gap-3 w-full max-w-[320px]">
-                        {msg.stores.map((store: any, si: number) => (
+                        {msg.stores.map((store: Store, si: number) => (
                           <div key={si} className="rounded-2xl overflow-hidden border border-purple-50/80 shadow-md bg-white/95 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300">
                             {/* Store Header */}
                             <div className="px-3.5 pt-3 pb-2 flex items-center gap-2.5">
@@ -314,13 +406,13 @@ export default function Home() {
                             </div>
 
                             {/* Store Image */}
-                            {(store.image_url) && (
+                            {store.image_url && (
                               <div className="px-2 pb-1">
                                 <div className="relative group/img cursor-pointer rounded-xl overflow-hidden">
                                   <div className="absolute top-2.5 left-2.5 z-10">
                                     <span className="bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[9px] px-2.5 py-1 rounded-lg font-bold shadow-sm tracking-wider">📸 หน้าร้าน</span>
                                   </div>
-                                  <img src={store.image_url} className="w-full h-36 object-cover rounded-xl group-hover/img:scale-[1.03] transition-transform duration-500" alt={store.store_name || store.name} />
+                                  <img src={store.image_url} className="w-full h-36 object-cover rounded-xl group-hover/img:scale-[1.03] transition-transform duration-500" alt={store.store_name || store.name || "Store"} />
                                 </div>
                               </div>
                             )}
@@ -350,7 +442,7 @@ export default function Home() {
                     {msg.quick_replies && msg.quick_replies.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {msg.quick_replies.map((qr: string, qi: number) => (
-                          <button key={qi} onClick={() => setInputText(qr)} className="text-[12px] px-3 py-1.5 bg-purple-50/80 text-purple-600 border border-purple-100 rounded-xl font-semibold hover:bg-purple-100 hover:border-purple-200 transition-all active:scale-95">
+                          <button key={qi} onClick={() => handleSendMessage(qr)} className="text-[12px] px-3 py-1.5 bg-purple-50/80 text-purple-600 border border-purple-100 rounded-xl font-semibold hover:bg-purple-100 hover:border-purple-200 transition-all active:scale-95">
                             {qr}
                           </button>
                         ))}
@@ -409,7 +501,7 @@ export default function Home() {
 
               {/* Send Button */}
               <button
-                onClick={handleSendMessage}
+                onClick={() => handleSendMessage()}
                 disabled={!inputText.trim()}
                 className="relative group/send overflow-hidden text-white p-2.5 sm:p-3 px-4 sm:px-5 rounded-2xl disabled:opacity-25 disabled:grayscale transition-all duration-300 active:scale-90 hover:scale-105 hover:shadow-xl hover:shadow-purple-300/40"
                 style={{ background: "linear-gradient(135deg, #818cf8 0%, #a78bfa 30%, #c084fc 50%, #e879f9 70%, #f472b6 100%)" }}
